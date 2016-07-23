@@ -1,0 +1,24 @@
+{
+  "name": "permissions.request",
+  "version": "0.1.0",
+  "description": "Polyfill for navigator.permissions.request()",
+  "main": "permissions.request.js",
+  "scripts": {
+    "prepublish": "typings install && tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jyasskin/permissions.request.git"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/jyasskin/permissions.request/issues"
+  },
+  "homepage": "https://github.com/jyasskin/permissions.request#readme",
+  "devDependencies": {
+    "typescript": "^1.8.10",
+    "typings": "^1.3.2"
+  }
+}
