@@ -38,4 +38,5 @@ jspm_packages
 
 # Typescript
 **.js
+**.js.map
 typings/
