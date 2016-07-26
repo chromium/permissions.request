@@ -1,4 +1,4 @@
-type PermissionName =
+export type PermissionName =
     "geolocation" |
     "notifications" |
     "push" |
@@ -14,35 +14,45 @@ type PermissionName =
 
 // Descriptors:
 
-interface PermissionDescriptor {
+export interface PermissionDescriptor {
     name: PermissionName;
 }
 
-interface GeolocationPermissionDescriptor extends PermissionDescriptor {
+export interface GeolocationPermissionDescriptor extends PermissionDescriptor {
     name: "geolocation";
-    enableHighAccuracy: boolean;
-    timeout: number;
-    maximumAge: number;
+    enableHighAccuracy?: boolean;
+    timeout?: number;
+    maximumAge?: number;
 }
 
 interface NotificationsPermissionDescriptor extends PermissionDescriptor {
     name: "notifications";
 }
 
-interface PushPermissionDescriptor extends PermissionDescriptor {
+export interface PushPermissionDescriptor extends PermissionDescriptor {
     name: "push";
+    serviceWorker: ServiceWorkerRegistration;
+    userVisibleOnly?: boolean;
+    applicationServerKey?: ArrayBuffer | ArrayBufferView;
 }
 
-interface MidiPermissionDescriptor extends PermissionDescriptor {
+export interface MidiPermissionDescriptor extends PermissionDescriptor {
     name: "midi";
+    sysex: boolean;
+    software: boolean;
 }
 
-interface CameraPermissionDescriptor extends PermissionDescriptor {
+type MediaTrackConstraints = any;
+export interface CameraPermissionDescriptor extends PermissionDescriptor {
     name: "camera";
+    constraints?: MediaTrackConstraints;
+    peerIdentity?: string;
 }
 
-interface MicrophonePermissionDescriptor extends PermissionDescriptor {
+export interface MicrophonePermissionDescriptor extends PermissionDescriptor {
     name: "microphone";
+    constraints?: MediaTrackConstraints;
+    peerIdentity?: string;
 }
 
 interface SpeakerPermissionDescriptor extends PermissionDescriptor {
@@ -53,12 +63,18 @@ interface DeviceInfoPermissionDescriptor extends PermissionDescriptor {
     name: "device-info";
 }
 
-interface BackgroundSyncPermissionDescriptor extends PermissionDescriptor {
+export interface BackgroundSyncPermissionDescriptor extends PermissionDescriptor {
     name: "background-sync";
+    serviceWorker: ServiceWorkerRegistration;
+    tag: string;
 }
 
-interface BluetoothPermissionDescriptor extends PermissionDescriptor {
+export interface BluetoothPermissionDescriptor extends PermissionDescriptor {
     name: "bluetooth";
+    deviceId?: string;
+    // These match RequestDeviceOptions.
+    filters?: Array<any>;
+    optionalServices?: Array<any>;
 }
 
 interface PersistentStoragePermissionDescriptor extends PermissionDescriptor {
@@ -66,15 +82,59 @@ interface PersistentStoragePermissionDescriptor extends PermissionDescriptor {
 }
 
 
-type PermissionState = "granted" | "denied" | "prompt";
+export type PermissionState = "granted" | "denied" | "prompt";
 
 // Query and Request results:
 
-interface PermissionStatus {
+export interface PermissionStatus {
     state: PermissionState;
 }
 
-interface Permissions {
+export interface GeolocationPermissionResult extends PermissionStatus {
+    // For stream=false, from Position:
+    coords?: Coordinates;
+    timestamp?: number;
+}
+
+interface NotificationsPermissionResult extends PermissionStatus {
+}
+
+export interface PushPermissionResult extends PermissionStatus {
+    subscription: PushSubscription;
+}
+
+type MIDIAccess = any;
+export interface MidiPermissionResult extends PermissionStatus {
+    access: MIDIAccess;
+}
+
+type MediaStream = any;
+export interface CameraPermissionResult extends PermissionStatus {
+    stream?: MediaStream;
+}
+
+export interface MicrophonePermissionResult extends PermissionStatus {
+    stream?: MediaStream;
+}
+
+interface SpeakerPermissionResult extends PermissionStatus {
+}
+
+interface DeviceInfoPermissionResult extends PermissionStatus {
+}
+
+interface BackgroundSyncPermissionResult extends PermissionStatus {
+}
+
+type BluetoothDevice = any;
+export interface BluetoothPermissionResult extends PermissionStatus {
+    devices: Array<BluetoothDevice>;
+}
+
+interface PersistentStoragePermissionResult extends PermissionStatus {
+}
+
+export interface Permissions {
     query(permissionDesc: PermissionDescriptor): Promise<PermissionStatus>;
 
     request(permissionDesc: GeolocationPermissionDescriptor): Promise<PermissionStatus>;
@@ -86,13 +146,39 @@ interface Permissions {
     request(permissionDesc: SpeakerPermissionDescriptor): Promise<PermissionStatus>;
     request(permissionDesc: DeviceInfoPermissionDescriptor): Promise<PermissionStatus>;
     request(permissionDesc: BackgroundSyncPermissionDescriptor): Promise<PermissionStatus>;
-    request(permissionDesc: BluetoothPermissionDescriptor): Promise<PermissionStatus>;
+    request(permissionDesc: BluetoothPermissionDescriptor): Promise<BluetoothPermissionResult>;
     request(permissionDesc: PersistentStoragePermissionDescriptor): Promise<PermissionStatus>;
 }
 
-interface Navigator {
-    permissions: Permissions;
+declare global {
+    interface Navigator {
+        permissions: Permissions;
+
+        // Incomplete members from other specs:
+        bluetooth: any;
+        mediaDevices: {
+            getUserMedia(opts: any,
+                         success: (stream: MediaStream)=>any,
+                         failure: (err: DOMException)=>any): void;
+        }
+        requestMIDIAccess(options?: any): Promise<MIDIAccess>;
+        storage: { persist(): Promise<boolean>; };
+    }
+    interface PushManager {
+        subscribe(options?: any): Promise<PushSubscription>;
+    }
+    interface ServiceWorkerRegistration {
+        sync: any;
+    }
+    var ServiceWorkerRegistration: {
+        prototype: ServiceWorkerRegistration;
+        new(): ServiceWorkerRegistration;
+    }
 }
+declare var Notification: {
+    requestPermission(): Promise<"default"|"denied"|"granted">;
+}
+
 
 function tryQuery(permissionDesc: PermissionDescriptor, dflt: PermissionState
                  ): Promise<PermissionStatus> {
@@ -101,6 +187,149 @@ function tryQuery(permissionDesc: PermissionDescriptor, dflt: PermissionState
     } else {
         return Promise.resolve({state: dflt});
     }
+}
+
+
+function requestGeolocation(permissionDesc: GeolocationPermissionDescriptor): Promise<GeolocationPermissionResult> {
+    return new Promise((resolve, reject) => {
+        let {enableHighAccuracy, timeout, maximumAge} =
+            permissionDesc;
+        navigator.geolocation.getCurrentPosition(
+            ({coords, timestamp}) => {
+                resolve(tryQuery(permissionDesc, "granted")
+                        .then(({state}) => {state, coords, timestamp}));
+            }, ({code, message}) => {
+                resolve(tryQuery(permissionDesc, "prompt"));
+            },
+            {enableHighAccuracy, timeout, maximumAge})
+    });
+}
+
+function requestNotifications(permissionDesc: NotificationsPermissionDescriptor): Promise<NotificationsPermissionResult> {
+    return Notification.requestPermission().then(state => {
+        switch(state) {
+        case "default": return {state: "prompt"};
+        case "granted": return {state: "granted"};
+        case "denied": return {state: "denied"};
+        }
+        throw new TypeError(state);
+    });
+}
+
+function requestPush(permissionDesc: PushPermissionDescriptor): Promise<PushPermissionResult> {
+    return new Promise((resolve, reject) => {
+        let {serviceWorker, userVisibleOnly, applicationServerKey} =
+            <PushPermissionDescriptor>permissionDesc;
+        if (!(serviceWorker instanceof ServiceWorkerRegistration)) {
+            throw new TypeError();
+        }
+        resolve(
+            serviceWorker.pushManager.subscribe(
+                {userVisibleOnly, applicationServerKey})
+                .then(subscription => ({state: "granted", subscription}),
+                      err => {
+                          if (err.name === "NotAllowedError") {
+                              return {state: "denied"};
+                          }
+                          // Re-throw SecurityError, InvalidStateError,
+                          // and AbortError.
+                          throw err;
+                      })
+        );
+    });
+}
+
+function requestMidi(permissionDesc: MidiPermissionDescriptor): Promise<MidiPermissionResult> {
+    let {sysex, software} = permissionDesc;
+    return navigator.requestMIDIAccess({sysex, software})
+        .then(access => ({state: "granted", access}),
+              err => {
+                  if (err.name === "SecurityError") {
+                      return {state: "denied"};
+                  }
+                  throw err;
+              })
+}
+
+function requestCamera(permissionDesc: CameraPermissionDescriptor): Promise<CameraPermissionResult> {
+    return new Promise((resolve, reject) => {
+        let {constraints, peerIdentity} = permissionDesc;
+        navigator.mediaDevices.getUserMedia(
+            {video: constraints ? constraints: true,
+             peerIdentity},
+            stream => resolve({state: "granted", stream}),
+            err => {
+                if (err.name === "PermissionDeniedError") {
+                    resolve({state: "denied"});
+                }
+                reject(err);
+            })
+    });
+}
+
+function requestMicrophone(permissionDesc: MicrophonePermissionDescriptor): Promise<MicrophonePermissionResult> {
+    return new Promise((resolve, reject) => {
+        let {constraints, peerIdentity} = permissionDesc;
+        navigator.mediaDevices.getUserMedia(
+            {audio: constraints ? constraints: true,
+             peerIdentity},
+            stream => resolve({state: "granted", stream}),
+            err => {
+                if (err.name === "PermissionDeniedError") {
+                    resolve({state: "denied"});
+                }
+                reject(err);
+            })
+    });
+}
+
+function requestSpeaker(permissionDesc: SpeakerPermissionDescriptor): Promise<SpeakerPermissionResult> {
+    return Promise.reject(new TypeError("speaker can't be requested (yet?)"));
+}
+
+function requestDeviceInfo(permissionDesc: DeviceInfoPermissionDescriptor): Promise<DeviceInfoPermissionResult> {
+    return Promise.reject(new TypeError("device-info can't be requested (yet?)"));
+}
+
+function requestBackgroundSync(permissionDesc: BackgroundSyncPermissionDescriptor): Promise<BackgroundSyncPermissionResult> {
+    try {
+        let {serviceWorker, tag} = permissionDesc;
+        return serviceWorker.sync.register(tag).then(
+            () => ({state: "granted"}),
+            (err: DOMException) => {
+                if (err.name === "NotAllowedError") {
+                    return {state: "denied"};
+                }
+                throw err;
+            });
+    } catch(e) {
+        return Promise.reject(e);
+    }
+}
+
+function requestBluetooth(permissionDesc: BluetoothPermissionDescriptor): Promise<BluetoothPermissionResult> {
+    if (navigator.bluetooth && navigator.bluetooth.requestDevice) {
+        return (navigator.bluetooth.requestDevice(permissionDesc) as Promise<BluetoothDevice>)
+            .then<BluetoothPermissionResult>(
+                device => ({state: "prompt", devices: [device]}),
+                (err: DOMException) => {
+                    if (err.name === "NotFoundError") {
+                        return {state: "prompt", devices: []};
+                    }
+                    throw err;
+                });
+    }
+    return Promise.reject(new TypeError("navigator.bluetooth not supported"));
+}
+
+function requestPersistentStorage(permissionDesc: PersistentStoragePermissionDescriptor): Promise<PersistentStoragePermissionResult> {
+    return navigator.storage.persist().then(persisted => {
+        if (persisted) {
+            return {state: "granted"};
+        } else {
+            return {state: "denied"};
+        }
+    });
 }
 
 export function request(permissionDesc: GeolocationPermissionDescriptor): Promise<PermissionStatus>;
@@ -112,25 +341,38 @@ export function request(permissionDesc: MicrophonePermissionDescriptor): Promise
 export function request(permissionDesc: SpeakerPermissionDescriptor): Promise<PermissionStatus>;
 export function request(permissionDesc: DeviceInfoPermissionDescriptor): Promise<PermissionStatus>;
 export function request(permissionDesc: BackgroundSyncPermissionDescriptor): Promise<PermissionStatus>;
-export function request(permissionDesc: BluetoothPermissionDescriptor): Promise<PermissionStatus>;
+export function request(permissionDesc: BluetoothPermissionDescriptor): Promise<BluetoothPermissionResult>;
 export function request(permissionDesc: PersistentStoragePermissionDescriptor): Promise<PermissionStatus>;
 export function request(permissionDesc: PermissionDescriptor): Promise<PermissionStatus> {
     switch (permissionDesc.name) {
-    case 'geolocation':
-        let desc = <GeolocationPermissionDescriptor>permissionDesc;
-        return new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(
-                ({coords, timestamp}) => {
-                    resolve({state: 'granted', coords, timestamp});
-                }, ({code, message}) => {
-                    resolve(tryQuery(permissionDesc, 'prompt'));
-                },
-                {enableHighAccuracy: desc.enableHighAccuracy,
-                 timeout: desc.timeout,
-                 maximumAge: desc.maximumAge})
-        });
+    case "geolocation":
+        return requestGeolocation(<GeolocationPermissionDescriptor>permissionDesc);
+    case "notifications":
+        return requestNotifications(<NotificationsPermissionDescriptor>permissionDesc);
+    case "push":
+        return requestPush(<PushPermissionDescriptor>permissionDesc);
+    case "midi":
+        return requestMidi(<MidiPermissionDescriptor>permissionDesc);
+    case "camera":
+        return requestCamera(<CameraPermissionDescriptor>permissionDesc);
+    case "microphone":
+        return requestMicrophone(<MicrophonePermissionDescriptor>permissionDesc);
+    case "speaker":
+        return requestSpeaker(<SpeakerPermissionDescriptor>permissionDesc);
+    case "device-info":
+        return requestDeviceInfo(<DeviceInfoPermissionDescriptor>permissionDesc);
+    case "background-sync":
+        return requestBackgroundSync(<BackgroundSyncPermissionDescriptor>permissionDesc);
+    case "bluetooth":
+        return requestBluetooth(<BluetoothPermissionDescriptor>permissionDesc);
+    case "persistent-storage":
+        return requestPersistentStorage(<PersistentStoragePermissionDescriptor>permissionDesc);
     }
-    return Promise.reject<PermissionStatus>(new TypeError());
+
+    // Issue: Permissions doesn't specify what to do for an unrecognized
+    // PermissionName.
+    return Promise.reject(new TypeError(
+        "Unknown PermissionName: " + permissionDesc.name));
 };
 
 export function polyfill() {
