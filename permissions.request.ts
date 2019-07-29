@@ -211,7 +211,7 @@ function requestGeolocation(permissionDesc: GeolocationPermissionDescriptor): Pr
         navigator.geolocation.getCurrentPosition(
             ({coords, timestamp}) => {
                 resolve(tryQuery(permissionDesc, "granted")
-                        .then(({state}) => {state, coords, timestamp}));
+                        .then(({state}) => state));
             }, ({code, message}) => {
                 resolve(tryQuery(permissionDesc, "prompt"));
             },
